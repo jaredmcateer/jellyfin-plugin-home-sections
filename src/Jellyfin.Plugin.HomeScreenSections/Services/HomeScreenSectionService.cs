@@ -27,6 +27,19 @@ public class HomeScreenSectionService
     
     public List<HomeScreenSectionInfo> GetSectionsForUser(Guid userId, string? language)
     {
+        PluginConfiguration? config = HomeScreenSectionsPlugin.Instance?.Configuration;
+        bool useAsyncFlow = config?.Experimental?.IsFeatureEnabled(config.Experimental.UseSectionCompletionSignaling) == true;
+
+        if (useAsyncFlow)
+        {
+            return GetSectionsForUserAsync(userId, language).GetAwaiter().GetResult();
+        }
+
+        return GetSectionsForUserSync(userId, language);
+    }
+
+    private List<HomeScreenSectionInfo> GetSectionsForUserSync(Guid userId, string? language)
+    {
         // string displayPreferencesId = "usersettings";
         // Guid itemId = displayPreferencesId.GetMD5();
         //
@@ -197,5 +210,133 @@ public class HomeScreenSectionService
 
             return info;
         }).ToList();
+    }
+
+    private async Task<List<HomeScreenSectionInfo>> GetSectionsForUserAsync(Guid userId, string? language)
+    {
+        ModularHomeUserSettings? settings = m_homeScreenManager.GetUserSettings(userId);
+
+        List<IHomeScreenSection> sectionTypes = m_homeScreenManager.GetSectionTypes().Where(x => settings?.EnabledSections.Contains(x.Section ?? string.Empty) ?? false).ToList();
+
+        IEnumerable<IGrouping<int, SectionSettings>> groupedOrderedSections = HomeScreenSectionsPlugin.Instance.Configuration.SectionSettings
+            .OrderBy(x => x.OrderIndex)
+            .GroupBy(x => x.OrderIndex);
+
+        ConcurrentDictionary<int, List<IHomeScreenSection>> groupedSections = new();
+        Parallel.ForEach(groupedOrderedSections, orderedSections =>
+        {
+            ConcurrentBag<IHomeScreenSection?> tmpPluginSections = [];
+
+            Parallel.ForEach(orderedSections, sectionSettings =>
+            {
+                if (!sectionSettings.IsEnabledByAdmin())
+                {
+                    return;
+                }
+
+                IHomeScreenSection? sectionType = sectionTypes.FirstOrDefault(x => x.Section == sectionSettings.SectionId);
+
+                if (sectionType != null)
+                {
+                    int instanceCount = 1;
+                    if (sectionType.Limit > 1)
+                    {
+                        Random rnd = new();
+                        instanceCount = rnd.Next(sectionSettings.LowerLimit, sectionSettings.UpperLimit);
+                    }
+
+                    try
+                    {
+                        IEnumerable<IHomeScreenSection> instances = sectionType.CreateInstances(userId, instanceCount);
+
+                        foreach (IHomeScreenSection sectionInstance in instances)
+                        {
+                            tmpPluginSections.Add(sectionInstance);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        m_logger.LogError(e, "An error occurred while creating section instances for user '{userId}' and section '{sectionId}'.", userId, sectionSettings.SectionId);
+                    }
+                }
+            });
+
+            List<IHomeScreenSection> sectionList = [.. tmpPluginSections.Where(x => x != null).Select(x => x!)];
+            sectionList.Shuffle();
+
+            groupedSections.TryAdd(orderedSections.Key, sectionList);
+        });
+
+        List<IHomeScreenSection> sectionInstances = [];
+        foreach (int key in groupedSections.Keys.OrderBy(x => x))
+        {
+            sectionInstances.AddRange(groupedSections[key]);
+        }
+
+        // Build section infos without translations first
+        List<(HomeScreenSectionInfo Info, string? OriginalText)> sectionsWithText = [.. sectionInstances.Where(x => x != null).Select(x =>
+        {
+            HomeScreenSectionInfo info = x.AsInfo();
+
+            SectionSettings? sectionSettings = HomeScreenSectionsPlugin.Instance.Configuration.SectionSettings.FirstOrDefault(s => s.SectionId == info.Section);
+            info.ViewMode = sectionSettings?.ViewMode ?? info.ViewMode ?? SectionViewMode.Landscape;
+            string? displayTextToUse = null;
+
+            if (sectionSettings != null && !string.IsNullOrEmpty(info.Section))
+            {
+                HomeScreenSectionPayload tempPayload = new()
+                {
+                    UserId = settings?.UserId ?? Guid.Empty,
+                    UserSettings = settings
+                };
+
+                string headerDisplay = tempPayload.GetEffectiveStringConfig(info.Section, "SectionHeaderDisplay", "ShowWithNavigation");
+
+                if (headerDisplay == "Hide")
+                {
+                    info.DisplayText = string.Empty;
+                }
+                else
+                {
+                    displayTextToUse = tempPayload.GetEffectiveStringConfig(info.Section, "CustomDisplayText", "");
+                    if (!string.IsNullOrWhiteSpace(displayTextToUse))
+                    {
+                        info.DisplayText = displayTextToUse;
+                    }
+                }
+
+                if (headerDisplay == "ShowWithoutNavigation" || headerDisplay == "Hide")
+                {
+                    info.Route = null;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(displayTextToUse))
+            {
+                info.DisplayText = displayTextToUse;
+            }
+
+            return (info, info.DisplayText);
+        })];
+
+        // Translate all sections in parallel if needed
+        if (language != "en" && !string.IsNullOrEmpty(language?.Trim()))
+        {
+            List<Task<string?>> translationTasks = [.. sectionsWithText
+                .Where(x => x.OriginalText != null)
+                .Select(x => TranslationHelper.TranslateAsync(x.OriginalText!, "en", language.Trim()))];
+
+            string?[] translations = await Task.WhenAll(translationTasks);
+
+            int translationIndex = 0;
+            for (int i = 0; i < sectionsWithText.Count; i++)
+            {
+                if (sectionsWithText[i].OriginalText != null)
+                {
+                    sectionsWithText[i].Info.DisplayText = translations[translationIndex++];
+                }
+            }
+        }
+
+        return [.. sectionsWithText.Select(x => x.Info)];
     }
 }
