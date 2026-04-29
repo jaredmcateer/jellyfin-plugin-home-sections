@@ -277,6 +277,80 @@
                         </div>
                     </div>
                 </fieldset>
+
+                <fieldset class="verticalSection-extrabottompadding">
+                    <legend style="padding-bottom:10px; font-weight: bolder; font-size: 1.2em;">Experimental Performance Features</legend>
+                    <div style="padding-left: .5em;">
+                        <div style="padding: 1em; background-color: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; margin-bottom: 1.5em;">
+                            <strong>⚠️ Warning:</strong> These features are experimental and may change behavior or performance characteristics. 
+                            All flags are OFF by default. Requires both Master flag AND individual feature flag to activate.
+                        </div>
+                        
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1.5em; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalMasterFlag" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span style="font-weight: bold;">Enable Experimental Performance Features (Master)</span>
+                            </label>
+                            <div class="fieldDescription">Master switch for all experimental features. Individual features must also be enabled separately below.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalHttpClientReuse" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Reuse HTTP Clients</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: Low</strong> | Reuse HttpClient instances instead of creating new ones per request. Reduces memory allocations and socket exhaustion.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalDebouncedCacheWrites" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Debounced Image Cache Index Writes</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: Low</strong> | Write cache index less frequently instead of after every image. Reduces disk I/O during burst image caching.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalParallelContinueWatching" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Parallel Continue Watching/Next Up Queries</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: Medium</strong> | Run Continue Watching and Next Up queries in parallel instead of sequentially. Improves section load time.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalSectionCompletionSignaling" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Section Completion Signaling</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: Medium</strong> | Replace busy-wait polling with awaitable signaling during section loading. Reduces CPU usage under load.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalAsyncImageCaching" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Async Image Caching</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: High</strong> | Use async image caching to avoid blocking request threads. Improves throughput for image-heavy sections.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalSectionResultCaching" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Section Result Caching</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: High</strong> | Cache expensive section results with TTL-based invalidation. May show stale data within cache window.</div>
+                        </div>
+
+                        <div class="checkboxContainer checkboxContainer-withDescription" style="margin-bottom: 1em;">
+                            <label class="emby-checkbox-label">
+                                <input id="experimentalClientRequestThrottling" type="checkbox" is="emby-checkbox" class="emby-checkbox">
+                                <span>Client Section Request Throttling</span>
+                            </label>
+                            <div class="fieldDescription"><strong>Risk: Low</strong> | Limit concurrent section requests from the frontend. Reduces request bursts and server load spikes.</div>
+                        </div>
+                    </div>
+                </fieldset>
             </div>
             
             <div id="sections" class="jellyfin-tab-content" style="display: none;">
@@ -750,6 +824,17 @@
                             }
                         });
                         
+                        // Load experimental settings
+                        const experimental = config.Experimental || {};
+                        document.querySelector('#experimentalMasterFlag').checked = experimental.EnableExperimentalPerformance || false;
+                        document.querySelector('#experimentalAsyncImageCaching').checked = experimental.UseAsyncImageCaching || false;
+                        document.querySelector('#experimentalSectionCompletionSignaling').checked = experimental.UseSectionCompletionSignaling || false;
+                        document.querySelector('#experimentalHttpClientReuse').checked = experimental.UseHttpClientReuse || false;
+                        document.querySelector('#experimentalDebouncedCacheWrites').checked = experimental.UseDebouncedImageCacheIndexWrites || false;
+                        document.querySelector('#experimentalParallelContinueWatching').checked = experimental.UseParallelContinueWatchingNextUp || false;
+                        document.querySelector('#experimentalSectionResultCaching').checked = experimental.UseSectionResultCaching || false;
+                        document.querySelector('#experimentalClientRequestThrottling').checked = experimental.UseClientSectionRequestThrottling || false;
+                        
                         HomeScreenSections.arrServiceConfigs.forEach(serviceConfig => {
                             HomeScreenSections.loadArrConfig(serviceConfig, config);
                         });
@@ -1009,6 +1094,16 @@
                         DeveloperMode: document.querySelector('#globalDeveloperMode').checked,
                         CacheTimeoutSeconds: document.querySelector('[data-id=txtCacheTimeoutSeconds]').value || 86400,
                         OverrideStreamyfinHome: document.querySelector('#globalStreamyfinHomeOverride').checked,
+                        Experimental: {
+                            EnableExperimentalPerformance: document.querySelector('#experimentalMasterFlag').checked,
+                            UseAsyncImageCaching: document.querySelector('#experimentalAsyncImageCaching').checked,
+                            UseSectionCompletionSignaling: document.querySelector('#experimentalSectionCompletionSignaling').checked,
+                            UseHttpClientReuse: document.querySelector('#experimentalHttpClientReuse').checked,
+                            UseDebouncedImageCacheIndexWrites: document.querySelector('#experimentalDebouncedCacheWrites').checked,
+                            UseParallelContinueWatchingNextUp: document.querySelector('#experimentalParallelContinueWatching').checked,
+                            UseSectionResultCaching: document.querySelector('#experimentalSectionResultCaching').checked,
+                            UseClientSectionRequestThrottling: document.querySelector('#experimentalClientRequestThrottling').checked
+                        },
                         SectionSettings: []
                     };
 

@@ -56,6 +56,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Configuration
         public bool OverrideStreamyfinHome { get; set; } = false;
 
         public SectionSettings[] SectionSettings { get; set; } = Array.Empty<SectionSettings>();
+        
+        public ExperimentalSettings Experimental { get; set; } = new ExperimentalSettings();
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -324,5 +326,62 @@ namespace Jellyfin.Plugin.HomeScreenSections.Configuration
         public string? Url { get; set; } = "";
         public int UpcomingTimeframeValue { get; set; }
         public TimeframeUnit UpcomingTimeframeUnit { get; set; }
-    }   
+    }
+    
+    /// <summary>
+    /// Experimental performance optimization flags.
+    /// All flags default to false for safe upgrades.
+    /// Activation requires both Master flag AND individual feature flag.
+    /// </summary>
+    public class ExperimentalSettings
+    {
+        /// <summary>
+        /// Master switch for all experimental performance features.
+        /// Individual features also require their specific flag to be enabled.
+        /// </summary>
+        public bool EnableExperimentalPerformance { get; set; } = false;
+        
+        /// <summary>
+        /// Use async image caching to avoid blocking request threads during image downloads and processing.
+        /// </summary>
+        public bool UseAsyncImageCaching { get; set; } = false;
+        
+        /// <summary>
+        /// Replace busy-wait polling with awaitable completion signaling in section loading.
+        /// </summary>
+        public bool UseSectionCompletionSignaling { get; set; } = false;
+        
+        /// <summary>
+        /// Reuse HttpClient instances instead of creating new ones per request.
+        /// </summary>
+        public bool UseHttpClientReuse { get; set; } = false;
+        
+        /// <summary>
+        /// Debounce image cache index writes instead of writing after every image cache.
+        /// </summary>
+        public bool UseDebouncedImageCacheIndexWrites { get; set; } = false;
+        
+        /// <summary>
+        /// Execute ContinueWatching and NextUp queries in parallel instead of sequentially.
+        /// </summary>
+        public bool UseParallelContinueWatchingNextUp { get; set; } = false;
+        
+        /// <summary>
+        /// Cache expensive section results with TTL-based invalidation.
+        /// </summary>
+        public bool UseSectionResultCaching { get; set; } = false;
+        
+        /// <summary>
+        /// Throttle concurrent section requests from the client to reduce burst load.
+        /// </summary>
+        public bool UseClientSectionRequestThrottling { get; set; } = false;
+        
+        /// <summary>
+        /// Helper to check if a feature is effectively enabled (requires master flag + feature flag).
+        /// </summary>
+        public bool IsFeatureEnabled(bool featureFlag)
+        {
+            return EnableExperimentalPerformance && featureFlag;
+        }
+    }
 }
