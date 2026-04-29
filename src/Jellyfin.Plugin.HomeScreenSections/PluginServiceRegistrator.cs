@@ -16,6 +16,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
         {
             serviceCollection.AddSingleton<CollectionManagerProxy>();
             serviceCollection.AddSingleton<HomeScreenSectionService>();
+            serviceCollection.AddSingleton<SectionResultCache>();
             serviceCollection.AddHttpClient();
             serviceCollection.AddSingleton<HomeScreenSectionService>();
             serviceCollection.AddSingleton<ArrApiService>(services =>

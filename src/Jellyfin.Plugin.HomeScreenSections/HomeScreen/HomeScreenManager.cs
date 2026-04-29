@@ -7,6 +7,7 @@ using Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.RecentlyAdded;
 using Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections.Upcoming;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model.Dto;
+using Jellyfin.Plugin.HomeScreenSections.Services;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Querying;
@@ -29,6 +30,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         private readonly IServiceProvider m_serviceProvider;
         private readonly IApplicationPaths m_applicationPaths;
         private readonly ILogger m_logger;
+        private readonly SectionResultCache m_sectionCache;
 
         private const string c_settingsFile = "ModularHomeSettings.json";
 
@@ -37,11 +39,14 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         /// </summary>
         /// <param name="serviceProvider">Instance of the <see cref="IServiceProvider"/> interface.</param>
         /// <param name="applicationPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
-        public HomeScreenManager(IServiceProvider serviceProvider, IApplicationPaths applicationPaths, ILogger<HomeScreenManager> logger)
+        /// <param name="logger">Instance of the <see cref="ILogger"/> interface.</param>
+        /// <param name="sectionCache">Instance of the <see cref="SectionResultCache"/> interface.</param>
+        public HomeScreenManager(IServiceProvider serviceProvider, IApplicationPaths applicationPaths, ILogger<HomeScreenManager> logger, SectionResultCache sectionCache)
         {
             m_logger = logger;
             m_serviceProvider = serviceProvider;
             m_applicationPaths = applicationPaths;
+            m_sectionCache = sectionCache;
 
             string userFeatureEnabledPath = Path.Combine(m_applicationPaths.PluginConfigurationsPath, typeof(HomeScreenSectionsPlugin).Namespace!, "userFeatureEnabled.json");
             if (File.Exists(userFeatureEnabledPath))
@@ -99,7 +104,22 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen
         {
             if (m_delegates.ContainsKey(key))
             {
-                return m_delegates[key].GetResults(payload, queryCollection);
+                // Generate cache key based on section, user, and query parameters
+                string queryString = string.Join("_", queryCollection.Keys.OrderBy(k => k).Select(k => $"{k}={queryCollection[k]}"));
+                string cacheKey = SectionResultCache.GenerateCacheKey(key, payload.UserId, queryString);
+
+                // Try to get from cache
+                QueryResult<BaseItemDto>? cachedResult = m_sectionCache.GetCachedResult(cacheKey);
+                if (cachedResult != null)
+                {
+                    return cachedResult;
+                }
+
+                // Execute section and cache result
+                QueryResult<BaseItemDto> result = m_delegates[key].GetResults(payload, queryCollection);
+                m_sectionCache.CacheResult(cacheKey, result);
+
+                return result;
             }
 
             return new QueryResult<BaseItemDto>(Array.Empty<BaseItemDto>());
