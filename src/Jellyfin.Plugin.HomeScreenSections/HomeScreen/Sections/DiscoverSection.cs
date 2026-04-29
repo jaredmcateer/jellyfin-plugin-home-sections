@@ -2,6 +2,7 @@
 using Jellyfin.Plugin.HomeScreenSections.Configuration;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model.Dto;
+using Jellyfin.Plugin.HomeScreenSections.Services;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Querying;
@@ -43,7 +44,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections
             
             User? user = m_userManager.GetUserById(payload.UserId);
             
-            HttpClient client = new HttpClient();
+            HttpClient client = HttpClientProvider.GetClient();
             client.BaseAddress = new Uri(jellyseerrUrl);
             client.DefaultRequestHeaders.Add("X-Api-Key", HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrApiKey);
             

@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using Jellyfin.Plugin.HomeScreenSections.Services;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -18,7 +19,7 @@ public static class TranslationHelper
                 jsonPayload["target"] = destLanguage;
                 jsonPayload["api_key"] = HomeScreenSectionsPlugin.Instance.Configuration.LibreTranslateApiKey;
 
-                HttpClient client = new HttpClient();
+                HttpClient client = HttpClientProvider.GetClient();
                 HttpResponseMessage response = await client.PostAsync(
                     $"{HomeScreenSectionsPlugin.Instance.Configuration.LibreTranslateUrl}/translate",
                     new StringContent(jsonPayload.ToString(Formatting.None),

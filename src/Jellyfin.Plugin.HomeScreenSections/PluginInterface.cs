@@ -4,6 +4,7 @@ using System.Runtime.Loader;
 using Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model;
+using Jellyfin.Plugin.HomeScreenSections.Services;
 using MediaBrowser.Controller;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Querying;
@@ -64,7 +65,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
                             string? publishedServerUrl = serverApplicationHost.GetType()
                                 .GetProperty("PublishedServerUrl", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(serverApplicationHost) as string;
                     
-                            HttpClient client = new HttpClient();
+                            HttpClient client = HttpClientProvider.GetClient();
                             client.BaseAddress = new Uri(publishedServerUrl ?? $"http://localhost:{serverApplicationHost.HttpPort}");
                         
                             HttpResponseMessage responseMessage = client.PostAsync(payload.ResultsEndpoint, 
