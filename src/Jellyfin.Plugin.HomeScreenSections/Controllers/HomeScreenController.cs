@@ -248,16 +248,25 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         [HttpGet("Sections")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Authorize]
-        public ActionResult<QueryResult<HomeScreenSectionInfo>> GetHomeScreenSections(
+        public ActionResult GetHomeScreenSections(
             [FromQuery] Guid? userId,
             [FromQuery] string? language)
         {
             List<HomeScreenSectionInfo> sections = m_homeScreenSectionService.GetSectionsForUser(userId ?? Guid.Empty, language);
 
-            return new QueryResult<HomeScreenSectionInfo>(
-                0,
-                sections.Count,
-                sections);
+            PluginConfiguration? config = HomeScreenSectionsPlugin.Instance?.Configuration;
+            bool useClientThrottling = config?.Experimental?.IsFeatureEnabled(config.Experimental.UseClientSectionRequestThrottling) == true;
+
+            return Ok(new
+            {
+                StartIndex = 0,
+                TotalRecordCount = sections.Count,
+                Items = sections,
+                ExperimentalFlags = new
+                {
+                    UseClientSectionRequestThrottling = useClientThrottling
+                }
+            });
         }
 
         [HttpGet("Admin/Section/{sectionType}")]

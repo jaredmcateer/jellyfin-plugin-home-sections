@@ -12,6 +12,37 @@
         return hasIndexPageId && hasHomePageClass && hasSectionsDiv && hasPageRole;
     }
 
+    /**
+     * Throttles concurrent promise execution to prevent overwhelming the server.
+     * @param {Array<Function>} tasks - Array of functions that return promises
+     * @param {number} concurrencyLimit - Maximum number of concurrent tasks
+     * @returns {Promise<Array>} Promise that resolves with all results
+     */
+    async function throttlePromises(tasks, concurrencyLimit) {
+        const results = [];
+        const executing = [];
+        
+        for (const [index, task] of tasks.entries()) {
+            const promise = Promise.resolve().then(() => task()).then(result => {
+                results[index] = result;
+            });
+            
+            results.push(promise);
+            
+            if (concurrencyLimit <= tasks.length) {
+                const execution = promise.then(() => executing.splice(executing.indexOf(execution), 1));
+                executing.push(execution);
+                
+                if (executing.length >= concurrencyLimit) {
+                    await Promise.race(executing);
+                }
+            }
+        }
+        
+        await Promise.all(results);
+        return results;
+    }
+
     function getHomeScreenSectionFetchFn(serverId, sectionInfo, serverConnections, _userSettings) {
         return function() {
             var __userSettings = _userSettings;
@@ -419,12 +450,33 @@
                                         for (var44_7 = 0; var44_7 < var44_.Items.length; var44_7++) sectionInfo = var44_.Items[var44_7], var44_4.push(loadHomeSection(elem, apiClient, 0, userSettings, sectionInfo, options))
                                 }
                                 return var44_.TotalRecordCount > 0 ? [2, Promise.all(var44_4).then((function() {
-                                    var var134_2, var134_3, var134_4;
-                                    return var134_2 = {
+                                    var var134_2, var134_3, var134_4, useThrottling, concurrencyLimit;
+                                    var134_2 = {
                                         refresh: !0
-                                    }, var134_3 = elem.querySelectorAll(".itemsContainer"), var134_4 = [], Array.prototype.forEach.call(var134_3, (function(param139_) {
-                                        param139_.resume && var134_4.push(param139_.resume(var134_2))
-                                    })), Promise.all(var134_4)
+                                    };
+                                    var134_3 = elem.querySelectorAll(".itemsContainer");
+                                    var134_4 = [];
+                                    
+                                    // Check if client-side throttling is enabled
+                                    useThrottling = var44_.ExperimentalFlags && var44_.ExperimentalFlags.UseClientSectionRequestThrottling === true;
+                                    concurrencyLimit = 3; // Maximum 3 concurrent section loads
+                                    
+                                    if (useThrottling) {
+                                        // Use throttled loading
+                                        var resumeTasks = [];
+                                        Array.prototype.forEach.call(var134_3, (function(param139_) {
+                                            if (param139_.resume) {
+                                                resumeTasks.push(function() { return param139_.resume(var134_2); });
+                                            }
+                                        }));
+                                        return throttlePromises(resumeTasks, concurrencyLimit);
+                                    } else {
+                                        // Use legacy parallel loading
+                                        Array.prototype.forEach.call(var134_3, (function(param139_) {
+                                            param139_.resume && var134_4.push(param139_.resume(var134_2))
+                                        }));
+                                        return Promise.all(var134_4);
+                                    }
                                 }))] : (var44_9 = (null === (var44_11 = user.Policy) || void 0 === var44_11 ? void 0 : var44_11.IsAdministrator) ? s.Ay.translate("NoCreatedLibraries", '<br><a id="button-createLibrary" class="button-link">', "</a>") : s.Ay.translate("AskAdminToCreateLibrary"), var44_3 += '<div class="centerMessage padded-left padded-right">', var44_3 += "<h2>" + s.Ay.translate("MessageNothingHere") + "</h2>", var44_3 += "<p>" + var44_9 + "</p>", var44_3 += "</div>", elem.innerHTML = var44_3, (var44_10 = elem.querySelector("#button-createLibrary")) && var44_10.addEventListener("click", (function() {
                                     l.default.navigate("dashboard/libraries")
                                 })), [2])
