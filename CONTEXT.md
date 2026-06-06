@@ -31,3 +31,15 @@ _Avoid_: Page ID, session token, cache key
 **Cohesive prefix**:
 The longest initial run of order indices (from lowest) where each index is either vacant or fully built. Pagination slices flattened Section instances across that run — not across order-index groups.
 _Avoid_: Complete prefix, satisfied range, ready block
+
+**Jellyseerr internal URL**:
+The backend URL the plugin uses for Jellyseerr API requests from the server.
+_Avoid_: Jellyseerr URL, API URL
+
+**Jellyseerr display URL**:
+The base URL embedded in Discover card links so users open Jellyseerr in the browser. When unset, Modular Home falls back to the internal URL.
+_Avoid_: External URL, frontend URL
+
+**Discover item**:
+Media returned from Jellyseerr discover endpoints that is not yet present in the Jellyfin library.
+_Avoid_: Jellyseerr result, discover row

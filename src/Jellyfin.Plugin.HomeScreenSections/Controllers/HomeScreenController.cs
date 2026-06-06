@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Reflection;
 using Jellyfin.Extensions;
 using Jellyfin.Plugin.HomeScreenSections.Configuration;
@@ -8,9 +7,9 @@ using Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model;
 using Jellyfin.Plugin.HomeScreenSections.Model.Dto;
+using Jellyfin.Plugin.HomeScreenSections.Model.Jellyseerr;
 using Jellyfin.Plugin.HomeScreenSections.Services;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Querying;
 using Microsoft.AspNetCore.Authorization;
@@ -30,7 +29,8 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         IHomeScreenManager homeScreenManager,
         IServerApplicationHost serverApplicationHost,
         ISectionPageResolver sectionPageResolver,
-        ImageCacheService imageCacheService) : ControllerBase
+        ImageCacheService imageCacheService,
+        IJellyseerrClient jellyseerrClient) : ControllerBase
     {
         /// <summary>
         /// Sets appropriate cache headers based on developer mode and cache bust counter.
@@ -281,7 +281,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
 
         [HttpPost("DiscoverRequest")]
         [Authorize]
-        public async Task<ActionResult> MakeDiscoverRequest([FromServices] IUserManager userManager, [FromBody] DiscoverRequestPayload payload)
+        public async Task<ActionResult> MakeDiscoverRequest([FromBody] DiscoverRequestPayload payload, CancellationToken cancellationToken)
         {
             string? userIdString = User.Claims.FirstOrDefault(x => x.Type.Equals("Jellyfin-UserId", StringComparison.OrdinalIgnoreCase))?.Value;
             Guid userId = string.IsNullOrEmpty(userIdString) ? Guid.Empty : Guid.Parse(userIdString);
@@ -291,59 +291,15 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
                 return Forbid();
             }
 
-            User? user = userManager.GetUserById(userId);
-            if (user == null)
-            {
-                return Forbid();
-            }
+            JellyseerrSubmitResult? result = await jellyseerrClient.SubmitRequestAsync(userId, payload, cancellationToken)
+                .ConfigureAwait(false);
 
-            string? jellyseerrUrl = HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrUrl;
-
-            if (jellyseerrUrl == null)
+            if (result == null || !result.IsConfigured || !result.UserResolved)
             {
                 return BadRequest();
             }
 
-            HttpClient client = new()
-            {
-                BaseAddress = new Uri(jellyseerrUrl)
-            };
-            client.DefaultRequestHeaders.Add("X-Api-Key", HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrApiKey);
-
-            HttpResponseMessage usersResponse = client.GetAsync($"/api/v1/user?q={user.Username}").GetAwaiter().GetResult();
-            string userResponseRaw = usersResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            int? jellyseerrUserId = JObject.Parse(userResponseRaw).Value<JArray>("results")!.OfType<JObject>().FirstOrDefault(x => x.Value<string>("jellyfinUsername") == user.Username)?.Value<int>("id");
-
-            if (jellyseerrUserId == null)
-            {
-                return BadRequest();
-            }
-
-            client.DefaultRequestHeaders.Add("X-Api-User", jellyseerrUserId.ToString());
-
-            HttpResponseMessage requestResponse;
-            if (payload.MediaType == "tv")
-            {
-                requestResponse = await client.PostAsync("/api/v1/request", JsonContent.Create(new JellyseerrTvShowRequestPayload
-                {
-                    MediaId = payload.MediaId,
-                    MediaType = payload.MediaType,
-                    Seasons = "all"
-                }));
-            }
-            else
-            {
-                requestResponse = await client.PostAsync("/api/v1/request", JsonContent.Create(new JellyseerrRequestPayload
-                {
-                    MediaId = payload.MediaId,
-                    MediaType = payload.MediaType
-                }));
-            }
-
-            string responseContent = await requestResponse.Content.ReadAsStringAsync();
-            string contentType = requestResponse.Content.Headers.ContentType?.MediaType ?? "application/json";
-
-            return Content(responseContent, contentType);
+            return Content(result.Content, result.ContentType);
         }
     }
 }

@@ -24,6 +24,11 @@ namespace Jellyfin.Plugin.HomeScreenSections
                 IHttpClientFactory httpClientFactory = services.GetRequiredService<IHttpClientFactory>();
                 return ActivatorUtilities.CreateInstance<ArrApiService>(services, httpClientFactory.CreateClient());
             });
+            serviceCollection.AddSingleton<IJellyseerrClient>(services =>
+            {
+                IHttpClientFactory httpClientFactory = services.GetRequiredService<IHttpClientFactory>();
+                return ActivatorUtilities.CreateInstance<JellyseerrClient>(services, httpClientFactory.CreateClient());
+            });
             serviceCollection.AddSingleton<ImageCacheService>(services =>
             {
                 IHttpClientFactory httpClientFactory = services.GetRequiredService<IHttpClientFactory>();
@@ -34,14 +39,14 @@ namespace Jellyfin.Plugin.HomeScreenSections
             serviceCollection.AddSingleton<IHomeScreenManager, HomeScreenManager>(services =>
             {
                 IApplicationPaths appPaths = services.GetRequiredService<IApplicationPaths>();
-                
+
                 HomeScreenManager homeScreenManager = ActivatorUtilities.CreateInstance<HomeScreenManager>(services);
-                
+
                 string pluginLocation = Path.Combine(appPaths.PluginConfigurationsPath, typeof(HomeScreenSectionsPlugin).Namespace!);
 
                 DirectoryInfo pluginDir = new(pluginLocation);
                 pluginDir.Create();
-                
+
                 string[] extraDlls = Directory.GetFiles(pluginLocation, "*.dll", SearchOption.AllDirectories).ToArray();
 
                 foreach (string extraDll in extraDlls)
