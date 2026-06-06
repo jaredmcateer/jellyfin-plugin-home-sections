@@ -43,3 +43,15 @@ _Avoid_: External URL, frontend URL
 **Discover item**:
 Media returned from Jellyseerr discover endpoints that is not yet present in the Jellyfin library.
 _Avoid_: Jellyseerr result, discover row
+
+**Modular Home user settings**:
+Per-user persisted choices for which Sections appear on Modular Home, stored independently of admin defaults.
+_Avoid_: User preferences, home config, user config
+
+**Effective Modular Home settings**:
+The settings the server actually applies for a user — persisted user choices merged with admin defaults and locked Sections.
+_Avoid_: Resolved settings, computed settings, merged config
+
+**Locked section**:
+A Section whose enabled state is controlled by admin configuration and cannot be changed by the user (`AllowUserOverride == false`).
+_Avoid_: Admin section, forced section, pinned section

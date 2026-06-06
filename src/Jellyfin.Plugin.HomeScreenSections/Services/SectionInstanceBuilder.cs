@@ -9,16 +9,17 @@ namespace Jellyfin.Plugin.HomeScreenSections.Services;
 
 public class SectionInstanceBuilder(
     IHomeScreenManager homeScreenManager,
+    IModularHomeUserSettingsStore userSettingsStore,
     ILogger<HomeScreenSectionsPlugin> logger)
 {
     public async Task BuildAsync(SectionPageBuildState buildState, Guid userId, CancellationToken cancellationToken)
     {
-        ModularHomeUserSettings? settings = homeScreenManager.GetUserSettings(userId);
+        ModularHomeUserSettings settings = userSettingsStore.GetUserSettings(userId);
 
         List<IHomeScreenSection> sectionTypes =
         [
             .. homeScreenManager.GetSectionTypes()
-                .Where(x => settings?.EnabledSections.Contains(x.Section ?? string.Empty) ?? false)
+                .Where(x => settings.EnabledSections.Contains(x.Section ?? string.Empty))
         ];
 
         IGrouping<int, SectionSettings>[] groupedOrderedSections =

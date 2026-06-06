@@ -34,6 +34,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
                 IHttpClientFactory httpClientFactory = services.GetRequiredService<IHttpClientFactory>();
                 return ActivatorUtilities.CreateInstance<ImageCacheService>(services, httpClientFactory.CreateClient());
             });
+            serviceCollection.AddSingleton<IModularHomeUserSettingsStore, ModularHomeUserSettingsStore>();
             serviceCollection.AddSingleton<UserSectionsDataCache>();
             serviceCollection.AddSingleton<ITranslationManager, TranslationManager>();
             serviceCollection.AddSingleton<IHomeScreenManager, HomeScreenManager>(services =>
