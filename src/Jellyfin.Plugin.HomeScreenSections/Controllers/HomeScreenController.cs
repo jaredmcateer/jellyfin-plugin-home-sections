@@ -1,19 +1,14 @@
-using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using Jellyfin.Extensions;
 using Jellyfin.Plugin.HomeScreenSections.Configuration;
-using Jellyfin.Plugin.HomeScreenSections.Helpers;
 using Jellyfin.Plugin.HomeScreenSections.HomeScreen.Sections;
 using Jellyfin.Plugin.HomeScreenSections.Library;
 using Jellyfin.Plugin.HomeScreenSections.Model;
 using Jellyfin.Plugin.HomeScreenSections.Model.Dto;
 using Jellyfin.Plugin.HomeScreenSections.Services;
-using MediaBrowser.Common.Configuration;
-using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
@@ -21,7 +16,6 @@ using MediaBrowser.Model.Querying;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Primitives;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -32,31 +26,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
     /// </summary>
     [ApiController]
     [Route("[controller]")]
-    public class HomeScreenController : ControllerBase
+    public class HomeScreenController(
+        IHomeScreenManager homeScreenManager,
+        IServerApplicationHost serverApplicationHost,
+        ISectionPageResolver sectionPageResolver,
+        ImageCacheService imageCacheService) : ControllerBase
     {
-        private readonly IHomeScreenManager m_homeScreenManager;
-        private readonly IDisplayPreferencesManager m_displayPreferencesManager;
-        private readonly IServerApplicationHost m_serverApplicationHost;
-        private readonly IApplicationPaths m_applicationPaths;
-        private readonly HomeScreenSectionService m_homeScreenSectionService;
-        private readonly ImageCacheService m_imageCacheService;
-
-        public HomeScreenController(
-            IHomeScreenManager homeScreenManager,
-            IDisplayPreferencesManager displayPreferencesManager,
-            IServerApplicationHost serverApplicationHost, 
-            IApplicationPaths applicationPaths,
-            HomeScreenSectionService homeScreenSectionService,
-            ImageCacheService imageCacheService)
-        {
-            m_homeScreenManager = homeScreenManager;
-            m_displayPreferencesManager = displayPreferencesManager;
-            m_serverApplicationHost = serverApplicationHost;
-            m_applicationPaths = applicationPaths;
-            m_homeScreenSectionService = homeScreenSectionService;
-            m_imageCacheService = imageCacheService;
-        }
-
         /// <summary>
         /// Sets appropriate cache headers based on developer mode and cache bust counter.
         /// </summary>
@@ -67,17 +42,17 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             if (config.DeveloperMode)
             {
                 // Developer mode: Force immediate cache invalidation
-                Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-                Response.Headers["Pragma"] = "no-cache";
-                Response.Headers["Expires"] = "0";
+                Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+                Response.Headers.Pragma = "no-cache";
+                Response.Headers.Expires = "0";
             }
             else
             {
                 // Normal mode: Use configured cache timeout
-                Response.Headers["Cache-Control"] = $"public, max-age={config.CacheTimeoutSeconds}";
+                Response.Headers.CacheControl = $"public, max-age={config.CacheTimeoutSeconds}";
             }
 
-            Response.Headers["ETag"] = $"\"v{HomeScreenSectionsPlugin.Instance.Version}-c{config.CacheBustCounter}\"";
+            Response.Headers.ETag = $"\"v{HomeScreenSectionsPlugin.Instance.Version}-c{config.CacheBustCounter}\"";
         }
 
         [HttpGet("home-screen-sections.js")]
@@ -92,7 +67,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             {
                 return NotFound();
             }
-            
+
             SetCacheHeaders();
 
             return File(stream, "application/javascript");
@@ -110,7 +85,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             {
                 return NotFound();
             }
-            
+
             SetCacheHeaders();
 
             return File(stream, "text/css");
@@ -123,7 +98,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         {
             return HomeScreenSectionsPlugin.Instance.Configuration;
         }
-        
+
         [HttpPost("BustCache")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Authorize(Roles = "Administrator")]
@@ -146,7 +121,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public ActionResult GetCachedImage([FromRoute] string cacheKey)
         {
-            (byte[]? data, string? contentType) = m_imageCacheService.GetCachedImage(cacheKey);
+            (byte[]? data, string? contentType) = imageCacheService.GetCachedImage(cacheKey);
             var config = HomeScreenSectionsPlugin.Instance.Configuration;
 
             if (data == null || contentType == null)
@@ -173,12 +148,12 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             {
                 if (clearAll)
                 {
-                    m_imageCacheService.ClearAllCache();
+                    imageCacheService.ClearAllCache();
                     return Ok(new { message = "All cached images cleared" });
                 }
                 else
                 {
-                    m_imageCacheService.ClearExpiredCache();
+                    imageCacheService.ClearExpiredCache();
                     return Ok(new { message = "Expired cached images cleared" });
                 }
             }
@@ -201,9 +176,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
 
             return Ok(new
             {
-                Enabled = cfg.Enabled, 
-                AllowUserOverride = cfg.AllowUserOverride, 
-                PaginationEnabled = cfg.LazyLoadEnabled, 
+                Enabled = cfg.Enabled,
+                AllowUserOverride = cfg.AllowUserOverride,
+                PaginationEnabled = cfg.LazyLoadEnabled,
                 NumResultsPerPage = cfg.NumSectionsPerPage
             });
         }
@@ -220,11 +195,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
                     return StatusCode(503, "Plugin not initialized");
 
                 // Check HomeScreenManager availability
-                if (m_homeScreenManager == null)
+                if (homeScreenManager == null)
                     return StatusCode(503, "HomeScreenManager not available");
 
                 // Check section types are registered
-                var sectionTypes = m_homeScreenManager.GetSectionTypes();
+                var sectionTypes = homeScreenManager.GetSectionTypes();
                 if (!sectionTypes.Any())
                     return StatusCode(503, "No section types registered");
 
@@ -240,20 +215,26 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
         [HttpGet("Sections")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [Authorize]
-        public ActionResult<QueryResult<HomeScreenSectionInfo>> GetHomeScreenSections(
+        public async Task<ActionResult<QueryResult<HomeScreenSectionInfo>>> GetHomeScreenSections(
             [FromQuery] Guid? userId,
             [FromQuery] string? language,
             [FromQuery] int? page = null,
             [FromQuery] int? numResultsPerPage = null,
-            [FromQuery] Guid? pageHash = null)
+            [FromQuery] Guid? pageHash = null,
+            CancellationToken cancellationToken = default)
         {
-            List<HomeScreenSectionInfo> sections = m_homeScreenSectionService.MonitorLiveUpdatedSectionsForUser(userId ?? Guid.Empty, language, 
-                page ?? 1, numResultsPerPage, pageHash) ?? new List<HomeScreenSectionInfo>();
+            SectionPageResolveResult result = await sectionPageResolver.ResolvePageAsync(
+                userId ?? Guid.Empty,
+                language,
+                page ?? 1,
+                numResultsPerPage,
+                pageHash,
+                cancellationToken).ConfigureAwait(false);
 
             return new QueryResult<HomeScreenSectionInfo>(
                 0,
-                sections.Count,
-                sections);
+                result.Sections.Count,
+                result.Sections);
         }
 
         [HttpGet("Section/{sectionType}")]
@@ -270,31 +251,31 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
                 AdditionalData = additionalData
             };
 
-            return m_homeScreenManager.InvokeResultsDelegate(sectionType, payload, Request.Query);
+            return homeScreenManager.InvokeResultsDelegate(sectionType, payload, Request.Query);
         }
 
         [HttpPost("RegisterSection")]
         public ActionResult RegisterSection([FromBody] SectionRegisterPayload payload)
         {
-            m_homeScreenManager.RegisterResultsDelegate(new PluginDefinedSection(payload.Id, payload.DisplayText!, payload.Route, payload.AdditionalData)
+            homeScreenManager.RegisterResultsDelegate(new PluginDefinedSection(payload.Id, payload.DisplayText!, payload.Route, payload.AdditionalData)
             {
                 OnGetResults = sectionPayload =>
                 {
                     JObject jsonPayload = JObject.FromObject(sectionPayload);
 
-                    string? publishedServerUrl = m_serverApplicationHost.GetType()
-                        .GetProperty("PublishedServerUrl", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(m_serverApplicationHost) as string;
-                
+                    string? publishedServerUrl = serverApplicationHost.GetType()
+                        .GetProperty("PublishedServerUrl", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(serverApplicationHost) as string;
+
                     HttpClient client = new HttpClient();
-                    client.BaseAddress = new Uri(publishedServerUrl ?? $"http://localhost:{m_serverApplicationHost.HttpPort}");
-                    
-                    HttpResponseMessage responseMessage = client.PostAsync(payload.ResultsEndpoint, 
+                    client.BaseAddress = new Uri(publishedServerUrl ?? $"http://localhost:{serverApplicationHost.HttpPort}");
+
+                    HttpResponseMessage responseMessage = client.PostAsync(payload.ResultsEndpoint,
                         new StringContent(jsonPayload.ToString(Formatting.None), MediaTypeHeaderValue.Parse("application/json"))).GetAwaiter().GetResult();
 
                     return JsonConvert.DeserializeObject<QueryResult<BaseItemDto>>(responseMessage.Content.ReadAsStringAsync().GetAwaiter().GetResult()) ?? new QueryResult<BaseItemDto>();
                 }
             });
-            
+
             return Ok();
         }
 
@@ -309,19 +290,26 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             {
                 return Forbid();
             }
-            
+
             User? user = userManager.GetUserById(userId);
+            if (user == null)
+            {
+                return Forbid();
+            }
+
             string? jellyseerrUrl = HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrUrl;
 
             if (jellyseerrUrl == null)
             {
                 return BadRequest();
             }
-            
-            HttpClient client = new HttpClient();
-            client.BaseAddress = new Uri(jellyseerrUrl);
+
+            HttpClient client = new()
+            {
+                BaseAddress = new Uri(jellyseerrUrl)
+            };
             client.DefaultRequestHeaders.Add("X-Api-Key", HomeScreenSectionsPlugin.Instance.Configuration.JellyseerrApiKey);
-            
+
             HttpResponseMessage usersResponse = client.GetAsync($"/api/v1/user?q={user.Username}").GetAwaiter().GetResult();
             string userResponseRaw = usersResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             int? jellyseerrUserId = JObject.Parse(userResponseRaw).Value<JArray>("results")!.OfType<JObject>().FirstOrDefault(x => x.Value<string>("jellyfinUsername") == user.Username)?.Value<int>("id");
@@ -330,7 +318,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
             {
                 return BadRequest();
             }
-            
+
             client.DefaultRequestHeaders.Add("X-Api-User", jellyseerrUserId.ToString());
 
             HttpResponseMessage requestResponse;
@@ -351,10 +339,11 @@ namespace Jellyfin.Plugin.HomeScreenSections.Controllers
                     MediaType = payload.MediaType
                 }));
             }
-            
+
             string responseContent = await requestResponse.Content.ReadAsStringAsync();
-            
-            return Content(responseContent, requestResponse.Content.Headers.ContentType.MediaType);
+            string contentType = requestResponse.Content.Headers.ContentType?.MediaType ?? "application/json";
+
+            return Content(responseContent, contentType);
         }
     }
 }

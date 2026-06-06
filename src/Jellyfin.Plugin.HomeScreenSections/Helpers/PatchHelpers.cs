@@ -1,11 +1,9 @@
 using System.Reflection;
 using System.Runtime.Loader;
-using System.Threading.Channels;
 using HarmonyLib;
 using Jellyfin.Plugin.HomeScreenSections.Configuration;
 using Jellyfin.Plugin.HomeScreenSections.Library;
-using Jellyfin.Plugin.HomeScreenSections.Services;
-using MediaBrowser.Controller.Library;
+using Jellyfin.Plugin.HomeScreenSections.Model;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Linq;
@@ -14,7 +12,7 @@ namespace Jellyfin.Plugin.HomeScreenSections.Helpers;
 
 public class PatchHelpers
 {
-    private static Harmony s_harmony = new Harmony("dev.iamparadox.jellyfin.hss");
+    private static readonly Harmony s_harmony = new("dev.iamparadox.jellyfin.hss");
     private static bool s_patched = false;
 
     public static void SetupPatches()
@@ -23,8 +21,8 @@ public class PatchHelpers
         {
             return;
         }
-        
-        HarmonyMethod streamyfinConfigurationPatch = new HarmonyMethod(typeof(PatchHelpers).GetMethod(nameof(PatchHelpers.Patch_Streamyfin_Configuration), BindingFlags.NonPublic | BindingFlags.Static));
+
+        HarmonyMethod streamyfinConfigurationPatch = new(typeof(PatchHelpers).GetMethod(nameof(PatchHelpers.Patch_Streamyfin_Configuration), BindingFlags.NonPublic | BindingFlags.Static));
 
         Type? streamyfinControllerType = AssemblyLoadContext.All.SelectMany(x => x.Assemblies)
             .FirstOrDefault(x => x.FullName?.Contains("Jellyfin.Plugin.Streamyfin") ?? false)?
@@ -47,7 +45,7 @@ public class PatchHelpers
         {
             return;
         }
-        
+
         JObject sectionTemplate = new JObject
         {
             { "title", "" },
@@ -60,19 +58,20 @@ public class PatchHelpers
                 }
             }
         };
-        
+
         if (__result is ContentResult contentResult && contentResult.Content != null &&
             __instance is ControllerBase controller)
         {
             JObject parsedOutput = JObject.Parse(contentResult.Content);
-            
+
             // Mutate and set back
             // Find the user ID from the authorization
             string? userIdString = controller.User.Claims.FirstOrDefault(x => x.Type.Equals("Jellyfin-UserId", StringComparison.OrdinalIgnoreCase))?.Value;
             Guid userId = string.IsNullOrEmpty(userIdString) ? Guid.Empty : Guid.Parse(userIdString);
-            
-            HomeScreenSectionService hssService = HomeScreenSectionsPlugin.Instance.ServiceProvider.GetRequiredService<HomeScreenSectionService>();
-            List<HomeScreenSectionInfo> sections = hssService.MonitorLiveUpdatedSectionsForUser(userId, "en", 1) ?? new List<HomeScreenSectionInfo>();
+
+            ISectionPageResolver sectionPageResolver = HomeScreenSectionsPlugin.Instance.ServiceProvider.GetRequiredService<ISectionPageResolver>();
+            SectionPageResolveResult resolveResult = sectionPageResolver.ResolvePageAsync(userId, "en", 1, null, null).GetAwaiter().GetResult();
+            List<HomeScreenSectionInfo> sections = resolveResult.Sections;
 
             JArray? sectionsArr = parsedOutput.Value<JObject>("settings")?.Value<JObject>("home")?.Value<JObject>("value")?.Value<JArray>("sections");
 
@@ -82,13 +81,13 @@ public class PatchHelpers
 
                 foreach (HomeScreenSectionInfo info in sections)
                 {
-                    if ((info.Section?.StartsWith("Discover") ?? false) || 
+                    if ((info.Section?.StartsWith("Discover") ?? false) ||
                         (info.Section?.StartsWith("Upcoming") ?? false) ||
                         info.Section == "MyMedia")
                     {
                         continue;
                     }
-                    
+
                     JObject sectionObj = (sectionTemplate.DeepClone() as JObject)!;
 
                     sectionObj["title"] = info.DisplayText;
@@ -99,7 +98,7 @@ public class PatchHelpers
                         { "additionalData", info.AdditionalData },
                         { "language", "en" }
                     };
-                    
+
                     sectionsArr.Add(sectionObj);
                 }
             }

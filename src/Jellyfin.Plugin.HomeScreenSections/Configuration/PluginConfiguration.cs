@@ -59,7 +59,9 @@ namespace Jellyfin.Plugin.HomeScreenSections.Configuration
 
         public int ImageJpegQuality { get; set; } = 85;
 
-        public SectionSettings[] SectionSettings { get; set; } = Array.Empty<SectionSettings>();
+        public int PageHashCacheTtlMinutes { get; set; } = 120;
+
+        public SectionSettings[] SectionSettings { get; set; } = [];
     }
 
     public enum SectionViewMode

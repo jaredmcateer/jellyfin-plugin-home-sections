@@ -16,7 +16,8 @@ namespace Jellyfin.Plugin.HomeScreenSections
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             serviceCollection.AddSingleton<CollectionManagerProxy>();
-            serviceCollection.AddSingleton<HomeScreenSectionService>();
+            serviceCollection.AddSingleton<SectionInstanceBuilder>();
+            serviceCollection.AddSingleton<ISectionPageResolver, SectionPageResolver>();
             serviceCollection.AddHttpClient();
             serviceCollection.AddSingleton<ArrApiService>(services =>
             {
@@ -38,7 +39,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
                 
                 string pluginLocation = Path.Combine(appPaths.PluginConfigurationsPath, typeof(HomeScreenSectionsPlugin).Namespace!);
 
-                DirectoryInfo pluginDir = new DirectoryInfo(pluginLocation);
+                DirectoryInfo pluginDir = new(pluginLocation);
                 pluginDir.Create();
                 
                 string[] extraDlls = Directory.GetFiles(pluginLocation, "*.dll", SearchOption.AllDirectories).ToArray();
@@ -47,7 +48,7 @@ namespace Jellyfin.Plugin.HomeScreenSections
                 {
                     Assembly extraPluginAssembly = Assembly.LoadFile(extraDll);
 
-                    Type[] homeScreenSectionTypes = extraPluginAssembly.GetTypes().Where(x => x.IsAssignableTo(typeof(IHomeScreenSection))).ToArray();
+                    Type[] homeScreenSectionTypes = [.. extraPluginAssembly.GetTypes().Where(x => x.IsAssignableTo(typeof(IHomeScreenSection)))];
 
                     foreach (Type homeScreenSectionType in homeScreenSectionTypes)
                     {
